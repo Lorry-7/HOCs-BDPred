@@ -103,20 +103,40 @@ def get_fp_group(feat_name):
 
 @st.cache_resource
 def load_model():
-    model_path = "model.pt"
+    """加载模型包并增加调试信息"""
+    model_path = os.path.join(os.path.dirname(__file__), "model.pt") # 使用绝对路径更稳妥
+    
     if not os.path.exists(model_path):
+        st.error(f"❌ 未找到模型文件: {model_path}")
         return None
-    checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
-    model = TransformerClassifier(**checkpoint['model_config'])
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return {
-        "model": model, "scaler": checkpoint['scaler'],
-        "char_to_idx": checkpoint['char_to_idx'],
-        "max_len": checkpoint['max_smiles_length'],
-        "threshold": checkpoint.get('threshold', 0.5),
-        "class_names": checkpoint.get('class_names', ['Non-RB', 'RB'])
-    }
+    
+    try:
+        # 核心修改：增加 weights_only=False
+        # 因为你的模型包里不仅有权重，还有 scaler 对象和自定义类结构
+        checkpoint = torch.load(
+            model_path, 
+            map_location=torch.device('cpu'),
+            weights_only=False  # 必须设置为 False，否则无法解析自定义对象
+        )
+        
+        config = checkpoint['model_config']
+        model = TransformerClassifier(**config)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        
+        return {
+            "model": model,
+            "scaler": checkpoint['scaler'],
+            "char_to_idx": checkpoint['char_to_idx'],
+            "max_len": checkpoint['max_smiles_length'],
+            "threshold": checkpoint.get('threshold', 0.5),
+            "class_names": checkpoint.get('class_names', ['Non-RB', 'RB'])
+        }
+    except Exception as e:
+        st.error(f"❌ 模型加载失败: {str(e)}")
+        # 打印出具体的文件大小，帮我们进一步确认
+        st.info(f"当前读取的文件大小为: {os.path.getsize(model_path) / 1024:.2f} KB")
+        return None
 
 def contains_halogen(smiles):
     smiles_upper = smiles.upper()
