@@ -103,20 +103,24 @@ def get_fp_group(feat_name):
 
 @st.cache_resource
 def load_model():
-    """加载模型包并增加调试信息"""
-    model_path = os.path.join(os.path.dirname(__file__), "model.pt") # 使用绝对路径更稳妥
+    """加载模型包，解决路径定位与依赖加载问题"""
+    # 1. 动态获取 app.py 所在的绝对目录，确保能找到模型
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, "model.pt")
     
+    # 调试信息：如果找不到文件，打印当前目录下的所有文件协助排查
     if not os.path.exists(model_path):
-        st.error(f"❌ 未找到模型文件: {model_path}")
+        st.error(f"⚠️ 路径错误：无法在 {current_dir} 找到 model.pt")
+        st.info(f"当前目录下的文件有: {os.listdir(current_dir)}")
         return None
     
     try:
-        # 核心修改：增加 weights_only=False
-        # 因为你的模型包里不仅有权重，还有 scaler 对象和自定义类结构
+        # 2. 加载模型
+        # weights_only=False 是必须的，因为要加载 scaler (sklearn 对象)
         checkpoint = torch.load(
             model_path, 
             map_location=torch.device('cpu'),
-            weights_only=False  # 必须设置为 False，否则无法解析自定义对象
+            weights_only=False 
         )
         
         config = checkpoint['model_config']
@@ -132,10 +136,12 @@ def load_model():
             "threshold": checkpoint.get('threshold', 0.5),
             "class_names": checkpoint.get('class_names', ['Non-RB', 'RB'])
         }
+    except ModuleNotFoundError as e:
+        st.error(f"❌ 运行环境缺失依赖: {str(e)}")
+        st.info("请确保 requirements.txt 中包含 scikit-learn")
+        return None
     except Exception as e:
-        st.error(f"❌ 模型加载失败: {str(e)}")
-        # 打印出具体的文件大小，帮我们进一步确认
-        st.info(f"当前读取的文件大小为: {os.path.getsize(model_path) / 1024:.2f} KB")
+        st.error(f"❌ 模型解析失败: {str(e)}")
         return None
 
 def contains_halogen(smiles):
